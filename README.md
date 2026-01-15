@@ -1,246 +1,120 @@
 # Watermelon
 
-Sandbox that isolates your project inside a Linux VM.
+**Sandbox for development.** Isolates third-party code in a Linux VM so it can't touch your macOS host.
 
-## Why
+## Why?
 
-Running untrusted code like `npm install` risks:
-- **Filesystem access**: Malicious packages reading `~/.ssh`, `~/.aws`, `~/.gnupg`
-- **Network exfiltration**: Packages sending stolen data to remote servers
-- **Persistent changes**: Packages installing backdoors, cron jobs, launch agents
+Modern development runs third-party code constantly — installing packages, running dev servers, building, testing. This code executes with your full user privileges: it can read your SSH keys, access your cloud credentials, browse your filesystem, and make network requests anywhere.
 
-Watermelon isolates commands inside a Linux VM where they can't touch your host system.
+You can't audit it. A typical project has hundreds of dependencies, each with their own dependencies. The code changes with every update. Even if you could read it all, malicious code is designed to hide.
+
+The only solution is isolation. Run untrusted code in an environment where it physically cannot access your sensitive data or exfiltrate to arbitrary servers.
+
+Watermelon provides this: a Linux VM where your project runs normally, but the host filesystem is inaccessible and network access is limited to domains you explicitly allow.
 
 ## How It Works
 
 ```
-┌─────────────────────────────────────┐
-│           Host (macOS)              │
-│                                     │
-│  ~/Projects/myapp/                  │
-│  ├── .watermelon.toml  ← config     │
-│  └── src/, package.json...          │
-│                                     │
-└──────────────┬──────────────────────┘
-               │ virtiofs mount
-               ▼
-┌─────────────────────────────────────┐
-│           VM (Linux)                │
-│                                     │
-│  /project/  ← your project (r/w)    │
-│  /tools/    ← node, python (r/o)    │
-│                                     │
-│  Network: allowlist only            │
-│  Filesystem: isolated               │
-└─────────────────────────────────────┘
-```
-
-- Your project is mounted read-write inside the VM
-- Network is restricted to domains you explicitly allow
-- The VM persists between sessions (installed deps survive)
-- Host filesystem is completely isolated
-
-## Requirements
-
-- macOS (Apple Silicon or Intel)
-- [Lima](https://lima-vm.io/) installed: `brew install lima`
-
-## Installation
-
-```bash
-go install github.com/saeta/watermelon/cmd/watermelon@latest
-```
-
-Or build from source:
-
-```bash
-git clone https://github.com/saeta/watermelon
-cd watermelon
-go build -o watermelon ./cmd/watermelon
+┌─────────────────────────────────────────┐
+│            Host (macOS)                 │
+│  ~/project/.watermelon.toml             │
+└──────────────────┬──────────────────────┘
+                   │ virtiofs mount
+                   ▼
+┌─────────────────────────────────────────┐
+│            VM (Linux)                   │
+│  /project/  ← your files (r/w)          │
+│  Network: allowlist only                │
+│  Host filesystem: ISOLATED              │
+└─────────────────────────────────────────┘
 ```
 
 ## Quick Start
 
 ```bash
+brew install lima                    # Install dependency
+go install github.com/saeta/watermelon/cmd/watermelon@latest
+
 cd your-project
+watermelon init                      # Create .watermelon.toml
+# Edit config: add network.allow = ["registry.npmjs.org"]
 
-# Create config file
-watermelon init
-
-# Edit .watermelon.toml to allow npm registry
-# network.allow = ["registry.npmjs.org"]
-
-# Enter the sandbox
-watermelon run
-
-# Inside the VM:
-npm install
-npm run dev
+watermelon run                       # Enter sandbox
+npm install                          # Safe!
 exit
-
-# Later, re-enter (state is preserved)
-watermelon run
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `watermelon init` | Create `.watermelon.toml` config file |
-| `watermelon run` | Enter the sandbox VM (creates if needed) |
-| `watermelon exec <cmd>` | Run a single command without interactive shell |
-| `watermelon stop` | Stop the VM (preserves state) |
+| `watermelon init` | Create `.watermelon.toml` config |
+| `watermelon run` | Enter sandbox (creates VM if needed) |
+| `watermelon exec <cmd>` | Run command without interactive shell |
+| `watermelon stop` | Stop VM (preserves state) |
 | `watermelon destroy` | Delete VM and all state |
-| `watermelon status` | Show VM status for current project |
+| `watermelon status` | Show VM status |
 | `watermelon list` | List all watermelon VMs |
 | `watermelon violations` | Show blocked network requests |
+
+See [docs/COMMANDS.md](./docs/COMMANDS.md) for detailed usage.
 
 ## Configuration
 
 Create `.watermelon.toml` in your project root:
 
 ```toml
-[vm]
-image = "ubuntu-22.04"
-
 [network]
-# Only these domains are reachable (all others blocked)
-allow = [
-    "registry.npmjs.org",
-    "github.com",
-    "*.githubusercontent.com",
-]
+allow = ["registry.npmjs.org", "github.com"]
 
 [tools]
-# Tools to make available in VM
-node = "20"
-git = "latest"
-
-[mounts]
-# Additional host paths to mount (read-only)
-"~/.gitconfig" = { target = "/home/dev/.gitconfig" }
-"~/.npmrc" = { target = "/home/dev/.npmrc" }
+"node:20-slim" = ["node", "npm", "npx"]
 
 [ports]
-# Ports to forward from VM to host
-forward = [3000, 5173, 8080]
+forward = [3000]
 
 [resources]
 memory = "4GB"
 cpus = 2
-disk = "20GB"
-
-[security]
-# What happens on policy violations: "log", "fail", or "silent"
-on_violation = "log"
 ```
 
-### Defaults
-
-| Setting | Default |
-|---------|---------|
-| `network.allow` | `[]` (no network) |
-| `resources.memory` | `2GB` |
-| `resources.cpus` | `1` |
-| `resources.disk` | `10GB` |
-| `security.on_violation` | `log` |
+See [docs/CONFIG_SPEC.md](./docs/CONFIG_SPEC.md) for full reference.
 
 ## Examples
 
-Ready-to-use configurations for common project types are available in [`docs/examples/`](./docs/examples/):
+Ready-to-use configs in [`docs/examples/`](./docs/examples/):
 
 | Example | Use Case |
 |---------|----------|
-| [react-app](./docs/examples/react-app/) | React/Vite development |
-| [nextjs](./docs/examples/nextjs/) | Next.js with API routes |
-| [python-django](./docs/examples/python-django/) | Django web application |
-| [python-ml](./docs/examples/python-ml/) | Machine learning (PyTorch/TensorFlow) |
-| [rust-project](./docs/examples/rust-project/) | Rust with Cargo |
-| [go-project](./docs/examples/go-project/) | Go development |
-| [foundry](./docs/examples/foundry/) | Ethereum contracts (Foundry) |
-| [hardhat](./docs/examples/hardhat/) | Ethereum contracts (Hardhat) |
-| [monorepo](./docs/examples/monorepo/) | Full-stack (Node + Python) |
-| [audit-package](./docs/examples/audit-package/) | Inspect suspicious packages |
-
-Copy any example to your project:
+| [react-app](./docs/examples/react-app/) | React/Vite |
+| [nextjs](./docs/examples/nextjs/) | Next.js |
+| [python-django](./docs/examples/python-django/) | Django |
+| [python-ml](./docs/examples/python-ml/) | PyTorch/TensorFlow |
+| [foundry](./docs/examples/foundry/) | Ethereum (Foundry) |
+| [monorepo](./docs/examples/monorepo/) | Node + Python |
 
 ```bash
 cp docs/examples/react-app/.watermelon.toml ~/my-project/
 ```
 
-### Quick Examples
-
-**Node.js:**
-```toml
-[network]
-allow = ["registry.npmjs.org", "github.com"]
-
-[tools]
-node = "20"
-
-[ports]
-forward = [3000, 5173]
-```
-
-**Python:**
-```toml
-[network]
-allow = ["pypi.org", "files.pythonhosted.org"]
-
-[tools]
-python = "3.11"
-
-[ports]
-forward = [8000]
-```
-
 ## Security Model
 
-**Watermelon protects against:**
-- Packages reading sensitive host files (`~/.ssh`, `~/.aws`)
-- Packages exfiltrating data to unknown domains
-- Packages installing persistent backdoors on host
-- Runaway processes consuming host resources
+**Protects against:** credential theft, data exfiltration, persistent backdoors, resource exhaustion.
 
-**Watermelon does NOT protect against:**
-- Malicious code running inside the VM (it has full access there)
-- Attacks on your project files (they're mounted read-write)
+**Does not protect against:** malicious code inside the VM, attacks on mounted project files.
 
-This is a developer safety sandbox, not a jail for untrusted multi-tenant workloads.
+See [docs/SECURITY.md](./docs/SECURITY.md) for details.
 
-## How Network Isolation Works
+## Troubleshooting
 
-Watermelon generates iptables rules inside the VM:
-
-```bash
-# Allow specified domains
-iptables -A OUTPUT -d registry.npmjs.org -j ACCEPT
-iptables -A OUTPUT -d github.com -j ACCEPT
-
-# Allow DNS
-iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-
-# Allow established connections
-iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-# Block everything else
-iptables -A OUTPUT -j REJECT
-```
-
-Blocked requests are logged to `.watermelon/violations.log`.
+See [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) for common issues.
 
 ## Development
 
 ```bash
-# Run tests
-go test ./...
-
-# Run E2E tests (requires Lima)
-go test -tags=e2e ./test/...
-
-# Build
 go build -o watermelon ./cmd/watermelon
+go test ./...
+go test -tags=e2e ./test/...  # Requires Lima
 ```
 
 ## License

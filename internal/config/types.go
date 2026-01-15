@@ -1,0 +1,64 @@
+package config
+
+// Config represents .watermelon.toml
+type Config struct {
+	VM        VMConfig          `toml:"vm"`
+	Network   NetworkConfig     `toml:"network"`
+	Tools     map[string][]string `toml:"tools"`
+	Mounts    map[string]Mount  `toml:"mounts"`
+	Ports     PortsConfig       `toml:"ports"`
+	Resources ResourcesConfig   `toml:"resources"`
+	Security  SecurityConfig    `toml:"security"`
+}
+
+type VMConfig struct {
+	Image string `toml:"image"`
+}
+
+type NetworkConfig struct {
+	Allow []string `toml:"allow"`
+}
+
+type Mount struct {
+	Target string `toml:"target"`
+	Mode   string `toml:"mode"` // "ro" or "rw", default "ro"
+}
+
+type PortsConfig struct {
+	Forward []int `toml:"forward"`
+}
+
+type ResourcesConfig struct {
+	Memory string `toml:"memory"`
+	CPUs   int    `toml:"cpus"`
+	Disk   string `toml:"disk"`
+}
+
+type SecurityConfig struct {
+	OnViolation string `toml:"on_violation"`
+}
+
+// NewConfig returns a Config with default values
+func NewConfig() *Config {
+	return &Config{
+		VM: VMConfig{
+			Image: "ubuntu-22.04",
+		},
+		Network: NetworkConfig{
+			Allow: []string{},
+		},
+		Tools:  map[string][]string{},
+		Mounts: map[string]Mount{},
+		Ports: PortsConfig{
+			Forward: []int{},
+		},
+		Resources: ResourcesConfig{
+			Memory: "2GB",
+			CPUs:   1,
+			Disk:   "10GB",
+		},
+		Security: SecurityConfig{
+			OnViolation: "log",
+		},
+	}
+}

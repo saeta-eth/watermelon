@@ -87,6 +87,13 @@ portForwards:
   - guestPort: {{ . }}
     hostPort: {{ . }}
 {{- end }}
+  # Disable automatic port forwarding for security isolation
+  - ignore: true
+    guestIP: "0.0.0.0"
+    guestPortRange: [1, 65535]
+  - ignore: true
+    guestIP: "127.0.0.1"
+    guestPortRange: [1, 65535]
 `
 
 type templateData struct {

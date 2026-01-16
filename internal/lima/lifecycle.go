@@ -102,7 +102,7 @@ func Delete(vmName string) error {
 
 // Shell opens an interactive shell in the VM
 func Shell(vmName string) error {
-	cmd := exec.Command("limactl", "shell", vmName, "--", "bash", "-c", "cd /project && exec bash")
+	cmd := exec.Command("limactl", "shell", "--workdir", "/project", vmName)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -119,9 +119,8 @@ func Shell(vmName string) error {
 
 // Exec runs a command in the VM
 func Exec(vmName string, args []string) error {
-	// Wrap user command to run from /project directory
-	shellCmd := fmt.Sprintf("cd /project && %s", strings.Join(args, " "))
-	cmdArgs := []string{"shell", vmName, "--", "bash", "-c", shellCmd}
+	cmdArgs := []string{"shell", "--workdir", "/project", vmName, "--"}
+	cmdArgs = append(cmdArgs, args...)
 	cmd := exec.Command("limactl", cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
